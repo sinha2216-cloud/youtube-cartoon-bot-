@@ -17,7 +17,8 @@ STEPS = [
     ("Generating story...", "generate_story.py"),
     ("Generating audio...", "generate_audio.py"),
     ("Generating images...", "generate_images.py"),
-    ("Rendering video...", "render_video.py"),
+    ("Animating scenes on Kaggle GPU (optional, safe no-op without secrets)...", "kaggle_animate.py"),
+    ("Rendering video...", "render_video_animated.py"),
     ("Uploading to YouTube...", "upload_youtube.py"),
 ]
 
