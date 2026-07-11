@@ -34,6 +34,7 @@ subprocess.run(
     [
         sys.executable, "-m", "pip", "install", "-q",
         "diffusers==0.30.0", "accelerate==0.33.0",
+        "transformers==4.44.2",
         "imageio==2.34.2", "imageio-ffmpeg==0.5.1",
     ],
     check=True,
