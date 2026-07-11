@@ -1,0 +1,48 @@
+name: Daily Kids Cartoon Video Generator & Uploader
+
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  generate-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies (FFmpeg + fonts for subtitles)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run full pipeline (generate + upload)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          YOUTUBE_PRIVACY_STATUS: "public"
+          VIDEO_ORIENTATION: "vertical"
+          NUM_SCENES: "5"
+        run: python main.py
+
+      - name: Upload generated video as workflow artifact (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-video-${{ github.run_number }}
+          path: output/final_video.mp4
+          retention-days: 7
