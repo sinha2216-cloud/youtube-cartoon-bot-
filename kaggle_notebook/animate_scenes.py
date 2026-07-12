@@ -28,8 +28,18 @@ import os
 import subprocess
 import sys
 
-# Kaggle's base image usually has torch preinstalled; pin diffusers/etc. explicitly
-# since Kaggle's default versions drift and SVD needs a fairly recent diffusers.
+# Kaggle's default GPU allocation can be an older P100 (Pascal, compute
+# capability 6.0), and Kaggle's preinstalled PyTorch build has dropped
+# support for that architecture. Force-install a version that still
+# supports Pascal GPUs before anything else touches torch.
+subprocess.run(
+    [
+        sys.executable, "-m", "pip", "install", "-q",
+        "torch==2.5.0", "torchvision==0.20.0",
+        "--index-url", "https://download.pytorch.org/whl/cu121",
+    ],
+    check=True,
+)
 subprocess.run(
     [
         sys.executable, "-m", "pip", "install", "-q",
