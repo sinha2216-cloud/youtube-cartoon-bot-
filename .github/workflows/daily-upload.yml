@@ -38,7 +38,8 @@ jobs:
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
           YOUTUBE_PRIVACY_STATUS: "public"
           VIDEO_ORIENTATION: "vertical"
-          NUM_SCENES: "5"
+          # 🚀 VIRAL UPGRADE: Scenes 5 se badha kar 10 kar diye hain (Fast Visual Pacing)
+          NUM_SCENES: "10"
         run: python main.py
 
       - name: Upload generated video as workflow artifact (backup)
