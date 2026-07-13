@@ -8,7 +8,7 @@ on:
 jobs:
   generate-and-upload:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60  # 🔄 FIX: Timeout 30 se 60 kar diya taaki heavy Kaggle rendering cancel na ho
 
     steps:
       - name: Checkout repository
@@ -21,8 +21,9 @@ jobs:
 
       - name: Install system dependencies (FFmpeg + fonts for subtitles)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-dejavu-core
+          sudo apt-get update -y
+          # 🔄 FIX: --no-install-recommends add kiya taaki faltu packages download na hon aur process hang na ho
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
