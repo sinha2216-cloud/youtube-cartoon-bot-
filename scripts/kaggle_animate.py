@@ -1,7 +1,6 @@
 # kaggle_animate.py
 import os, json, sys, time, subprocess
 
-# Paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 KAGGLE_WORKSPACE = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "kaggle_run"))
 OUTPUT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "output"))
@@ -22,7 +21,16 @@ def main():
     with open(os.path.join(KAGGLE_WORKSPACE, "main.py"), "w", encoding="utf-8") as f:
         f.write(f"""
 import subprocess, os, json, torch
-# FIXED: Updated transformers to 4.43.0 to support EncoderDecoderCache and satisfy peft
+
+# NUCLEAR OPTION: Force reinstall CUDA-enabled PyTorch if not present
+print("Checking CUDA support...")
+if not torch.cuda.is_available():
+    print("CUDA not found! Reinstalling PyTorch with CUDA support...")
+    subprocess.run(['pip', 'install', '--force-reinstall', 'torch', 'torchvision', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cu121'], check=True)
+    import torch
+    torch.cuda.empty_cache()
+
+# Install other dependencies
 subprocess.run(['pip', 'install', '-q', 'diffusers==0.29.2', 'transformers==4.43.0', 'accelerate', 'peft'], check=True)
 
 from diffusers import AutoPipelineForText2Image, StableVideoDiffusionPipeline
@@ -49,11 +57,19 @@ for i in range(len(prompts)):
 print("COMPLETED_SUCCESSFULLY")
 """)
 
-    # 2. Metadata
+    # 2. Metadata (Make sure it requests GPU)
     with open(os.path.join(KAGGLE_WORKSPACE, "kernel-metadata.json"), "w") as f:
-        json.dump({"id": kernel_id, "title": "Kids Cartoon Automation HD", "code_file": "main.py", "language": "python", "kernel_type": "script", "is_gpu": True, "enable_internet": True}, f)
+        json.dump({
+            "id": kernel_id, 
+            "title": "Kids Cartoon Automation HD", 
+            "code_file": "main.py", 
+            "language": "python", 
+            "kernel_type": "script", 
+            "is_gpu": True, 
+            "enable_internet": True
+        }, f)
 
-    # 3. Push and WAIT
+    # 3. Push and Wait
     print("Pushing to Kaggle...")
     subprocess.run(["kaggle", "kernels", "push", "-p", KAGGLE_WORKSPACE], check=True)
 
@@ -65,19 +81,15 @@ print("COMPLETED_SUCCESSFULLY")
         print(f"Current Status: {status.strip()}")
         
         if "complete" in status:
-            print("Kaggle Kernel Finished!")
             break
         elif "error" in status or "failed" in status:
             print("Kaggle Kernel Failed! Fetching logs...")
-            # DUMP LOGS
             log_res = subprocess.run(["kaggle", "kernels", "output", kernel_id, "-p", OUTPUT_DIR], capture_output=True, text=True)
             print(log_res.stdout)
             sys.exit(1)
 
-    # 4. Download
     print("Downloading assets...")
     subprocess.run(["kaggle", "kernels", "output", kernel_id, "-p", OUTPUT_DIR], check=True)
-    print("Assets downloaded successfully.")
 
 if __name__ == "__main__":
     main()
