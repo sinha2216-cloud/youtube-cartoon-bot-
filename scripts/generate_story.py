@@ -7,7 +7,8 @@ import json
 import re
 import sys
 import time
-from mistralai import Mistral
+# 🔄 FIX: Naye Mistral SDK ke mutabiq import path sahi kiya hai
+from mistralai.client import Mistral
 
 MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")
 OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "..", "output", "story.json")
@@ -72,7 +73,6 @@ def main():
     client = Mistral(api_key=MISTRAL_API_KEY)
     prompt = PROMPT_TEMPLATE.format(num_scenes=NUM_SCENES)
     
-    # We use mistral-large-latest for the best reasoning and JSON formatting
     model_name = "mistral-large-latest"
     print(f"--- Generating Viral Script using Mistral AI ({model_name}) ---", file=sys.stderr)
 
