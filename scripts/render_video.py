@@ -9,6 +9,7 @@ Output: output/final_video.mp4
 import os
 import json
 import sys
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 # Compatibility shim for newer Pillow versions
@@ -21,6 +22,7 @@ from moviepy.editor import (
     CompositeVideoClip,
     CompositeAudioClip,
     concatenate_videoclips,
+    ImageClip as MoviepyImageClip,
 )
 from moviepy.video.fx.all import loop
 from moviepy.audio.fx.all import audio_loop
@@ -87,7 +89,6 @@ def make_subtitle_clip(text: str, duration: float):
     except Exception:
         font = ImageFont.load_default()
 
-    import numpy as np
     dummy = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
     lines = _wrap_text(dummy, text, font, max_width)
 
@@ -104,7 +105,6 @@ def make_subtitle_clip(text: str, duration: float):
         draw.text((x, y), line, font=font, fill="white", stroke_width=3, stroke_fill="black")
 
     frame = np.array(canvas)
-    from moviepy.editor import ImageClip as MoviepyImageClip
     txt_clip = MoviepyImageClip(frame).set_duration(duration).set_position(("center", int(H * 0.75)))
     return txt_clip
 
@@ -119,7 +119,7 @@ def main():
     scene_clips = []
 
     for i, scene in enumerate(story["scenes"]):
-        # TARGET THE AI VIDEO (.mp4) FROM KAGGLE
+        # Target the AI video (.mp4) from Kaggle
         video_clip_path = os.path.join(IMAGES_DIR, f"scene_{i}.mp4")
         audio_path = os.path.join(AUDIO_DIR, f"scene_{i}.mp3")
 
@@ -141,7 +141,7 @@ def main():
     print("🎬 Stitching all AI animated scenes together...", flush=True)
     final_video = concatenate_videoclips(scene_clips, method="compose")
 
-    # FIX: Audio-safe loop mixing 
+    # Safe Audio-loop mixing
     if os.path.exists(MUSIC_PATH):
         try:
             print("🎵 Mixing background music loop...", flush=True)
@@ -162,7 +162,7 @@ def main():
         audio_codec="aac",
         threads=4,
         preset="medium",
-        logger=None # Keeps Github Action logs clean
+        logger=None # Keeps Github Action/Terminal logs clean
     )
 
     print(f"🎉 SUCCESS: Video rendered perfectly -> {OUTPUT_PATH}")
