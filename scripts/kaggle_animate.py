@@ -11,7 +11,7 @@ KAGGLE_WORKSPACE = os.path.join(os.path.dirname(__file__), "..", "kaggle_run")
 OUTPUT_IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "output", "images")
 
 def main():
-    print("🚀 INIT: Kaggle GPU Orchestrator", flush=True)
+    print("🚀 INIT: Kaggle GPU Orchestrator (Version: P100 Stable)", flush=True)
 
     # 1. Setup Credentials
     username = os.environ.get("KAGGLE_USERNAME")
@@ -48,22 +48,23 @@ def main():
     
     kaggle_script_content = f"""
 import sys
-import os
 import subprocess
-import json
+import os
 
-print("🛠️ Applying PyTorch Hotfix for Kaggle P100 GPU (Takes 1-2 mins)...", flush=True)
-subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "torch", "torchvision", "torchaudio"])
-subprocess.run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "torch==2.10.0", "torchvision", "torchaudio", "--index-url", "https://download.pytorch.org/whl/cu126"])
-subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--upgrade", "diffusers", "transformers", "accelerate"])
-print("✅ Hotfix applied successfully!", flush=True)
+# --- 🛠️ STABLE INSTALL FOR P100 GPU ---
+print("🛠️ Synchronizing Environment...", flush=True)
+subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "torch", "torchvision", "torchaudio", "diffusers", "transformers"])
+# Force stable versions for P100 compatibility
+subprocess.run([sys.executable, "-m", "pip", "install", "torch==2.4.1", "torchvision==0.19.1", "torchaudio==2.4.1", "--index-url", "https://download.pytorch.org/whl/cu121"])
+subprocess.run([sys.executable, "-m", "pip", "install", "diffusers", "transformers", "accelerate", "peft", "pillow"])
+print("✅ Environment Synced!", flush=True)
 
 import torch
 import gc
 from PIL import Image
-
 from diffusers import AutoPipelineForText2Image, StableVideoDiffusionPipeline
 from diffusers.utils import export_to_video
+import json
 
 prompts = {json.dumps(prompts, ensure_ascii=False)}
 
@@ -112,7 +113,7 @@ print("✅ Kaggle Generation Complete!", flush=True)
     with open(os.path.join(KAGGLE_WORKSPACE, "main.py"), "w", encoding="utf-8") as f:
         f.write(kaggle_script_content)
 
-    # 4. DYNAMIC SLUG FIX
+    # 4. Kernel Metadata
     unique_id = int(time.time())
     kernel_slug = f"kids-cartoon-auto-{unique_id}"
     metadata = {
@@ -122,42 +123,35 @@ print("✅ Kaggle Generation Complete!", flush=True)
         "language": "python",
         "kernel_type": "script",
         "enable_gpu": True,
-        "enable_internet": True,
-        "dataset_slugs": [],
-        "container_slug": None,
-        "competition_slugs": [],
-        "kernel_slugs": []
+        "enable_internet": True
     }
 
     with open(os.path.join(KAGGLE_WORKSPACE, "kernel-metadata.json"), "w") as f:
         json.dump(metadata, f)
 
     # 5. Push to Kaggle
-    print(f"📤 Pushing workload to Kaggle GPU (Slug: {kernel_slug})...", flush=True)
+    print(f"📤 Pushing to Kaggle GPU (Slug: {kernel_slug})...", flush=True)
     subprocess.run(["kaggle", "kernels", "push", "-p", KAGGLE_WORKSPACE], check=True)
 
-    # 6. Monitor execution
+    # 6. Monitor
     kernel_id = f"{username}/{kernel_slug}"
-    print("⏳ Waiting for Kaggle GPU to finish (this takes 5-10 mins)...", flush=True)
+    print("⏳ Waiting for Kaggle GPU...", flush=True)
     
     while True:
         status_res = subprocess.run(["kaggle", "kernels", "status", kernel_id], capture_output=True, text=True)
         status = status_res.stdout.lower()
-        
         if "complete" in status:
             print("🎉 Kaggle Run Completed!", flush=True)
             break
         elif "error" in status or "failed" in status:
-            print(f"❌ FATAL: Kaggle GPU error! Check Kaggle website for logs.", file=sys.stderr)
+            print(f"❌ FATAL: Kaggle GPU error!", file=sys.stderr)
             sys.exit(1)
-            
-        time.sleep(30) # Poll every 30 seconds
+        time.sleep(30)
 
-    # 7. Pull Assets directly into output/images/
-    print(f"📥 Downloading assets from Kaggle directly to {OUTPUT_IMAGES_DIR}...", flush=True)
+    # 7. Pull Assets
+    print(f"📥 Downloading assets...", flush=True)
     subprocess.run(["kaggle", "kernels", "output", kernel_id, "-p", OUTPUT_IMAGES_DIR], check=True)
-    
-    print("✅ Step 3 Fully Completed! Assets are ready for Video Renderer.", flush=True)
+    print("✅ Assets ready for Video Renderer.", flush=True)
 
 if __name__ == "__main__":
     main()
