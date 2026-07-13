@@ -11,7 +11,7 @@ KAGGLE_WORKSPACE = os.path.join(os.path.dirname(__file__), "..", "kaggle_run")
 OUTPUT_IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "output", "images")
 
 def main():
-    print("🚀 INIT: Kaggle GPU Orchestrator (Version: P100 Stable - Optimized)", flush=True)
+    print("🚀 INIT: Kaggle GPU Orchestrator (Version: P100 Stable - Strict Tracking)", flush=True)
 
     # 1. Setup Credentials
     username = os.environ.get("KAGGLE_USERNAME")
@@ -51,9 +51,7 @@ import sys
 import subprocess
 import os
 
-# --- 🛠️ OPTIMIZED INSTALL FOR KAGGLE GPU ---
 print("🛠️ Checking & Synchronizing Environment...", flush=True)
-# Poora torch un-install karne ke bajay targeted update karenge taaki time bache
 subprocess.run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "torch==2.4.1", "torchvision==0.19.1", "torchaudio==2.4.1", "--index-url", "https://download.pytorch.org/whl/cu121"])
 subprocess.run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "diffusers", "transformers", "accelerate", "peft", "pillow"])
 print("✅ Environment Synced!", flush=True)
@@ -132,9 +130,40 @@ print("✅ Kaggle Generation Complete!", flush=True)
     print(f"📤 Pushing to Kaggle GPU (Slug: {kernel_slug})...", flush=True)
     subprocess.run(["kaggle", "kernels", "push", "-p", KAGGLE_WORKSPACE], check=True)
 
-    # 6. Monitor
+    # 6. Monitor (Strict & Verbose)
     kernel_id = f"{username}/{kernel_slug}"
     print("⏳ Waiting for Kaggle GPU...", flush=True)
     
     while True:
         status_res = subprocess.run(["kaggle", "kernels", "status", kernel_id], capture_output=True, text=True)
+        raw_status = status_res.stdout.strip()
+        print(f"📊 Kaggle Status Log: {raw_status}", flush=True)  # Live log for GitHub Actions
+        
+        status = raw_status.lower()
+        
+        # Strict checking for completion string
+        if "has status \"complete\"" in status or status.endswith('"complete"'):
+            print("🎉 Kaggle Run Completed Successfully!", flush=True)
+            break
+        elif "failed" in status or "error" in status or "has status \"error\"" in status:
+            print(f"❌ FATAL: Kaggle GPU execution failed! Check your Kaggle dashboard.", file=sys.stderr)
+            sys.exit(1)
+            
+        time.sleep(30)
+
+    # 7. Pull Assets & Verify
+    print(f"📥 Downloading assets to {OUTPUT_IMAGES_DIR}...", flush=True)
+    subprocess.run(["kaggle", "kernels", "output", kernel_id, "-p", OUTPUT_IMAGES_DIR], check=True)
+    
+    # Check if files actually downloaded
+    downloaded_files = os.listdir(OUTPUT_IMAGES_DIR)
+    print(f"📁 Files downloaded in output/images: {downloaded_files}", flush=True)
+    
+    if not downloaded_files:
+        print("❌ FATAL: Kaggle step marked success but NO files were downloaded!", file=sys.stderr)
+        sys.exit(1)
+        
+    print("✅ Assets ready for Video Renderer.", flush=True)
+
+if __name__ == "__main__":
+    main()
