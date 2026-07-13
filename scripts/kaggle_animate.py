@@ -11,7 +11,7 @@ KAGGLE_WORKSPACE = os.path.join(os.path.dirname(__file__), "..", "kaggle_run")
 OUTPUT_IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "output", "images")
 
 def main():
-    print("🚀 INIT: Kaggle GPU Orchestrator (Future-Proof Version)", flush=True)
+    print("🚀 INIT: Kaggle GPU Orchestrator", flush=True)
 
     # 1. Setup Credentials
     username = os.environ.get("KAGGLE_USERNAME")
@@ -47,14 +47,20 @@ def main():
     os.makedirs(OUTPUT_IMAGES_DIR, exist_ok=True)
     
     kaggle_script_content = f"""
-import torch
-import gc
+import sys
 import os
 import subprocess
-from PIL import Image
+import json
 
-# Force update diffusers
-subprocess.run(["pip", "install", "-q", "--upgrade", "diffusers", "transformers", "accelerate"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+print("🛠️ Applying PyTorch Hotfix for Kaggle P100 GPU (Takes 1-2 mins)...", flush=True)
+subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "torch", "torchvision", "torchaudio"])
+subprocess.run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "torch==2.10.0", "torchvision", "torchaudio", "--index-url", "https://download.pytorch.org/whl/cu126"])
+subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--upgrade", "diffusers", "transformers", "accelerate"])
+print("✅ Hotfix applied successfully!", flush=True)
+
+import torch
+import gc
+from PIL import Image
 
 from diffusers import AutoPipelineForText2Image, StableVideoDiffusionPipeline
 from diffusers.utils import export_to_video
@@ -106,7 +112,7 @@ print("✅ Kaggle Generation Complete!", flush=True)
     with open(os.path.join(KAGGLE_WORKSPACE, "main.py"), "w", encoding="utf-8") as f:
         f.write(kaggle_script_content)
 
-    # 4. DYNAMIC SLUG FIX: Append timestamp so it NEVER clashes with previous runs
+    # 4. DYNAMIC SLUG FIX
     unique_id = int(time.time())
     kernel_slug = f"kids-cartoon-auto-{unique_id}"
     metadata = {
@@ -115,7 +121,7 @@ print("✅ Kaggle Generation Complete!", flush=True)
         "code_file": "main.py",
         "language": "python",
         "kernel_type": "script",
-        "enable_gpu": True,      # 👈 FIXED: Changed from is_gpu to enable_gpu
+        "enable_gpu": True,
         "enable_internet": True,
         "dataset_slugs": [],
         "container_slug": None,
