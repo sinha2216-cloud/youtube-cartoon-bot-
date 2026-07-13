@@ -1,45 +1,42 @@
-# main.py
-# Orchestrates the full viral pipeline in order:
-# 1. Generate story (Gemini JSON)  2. Generate audio  3. Generate Images + Animation (Kaggle GPU)  4. Render video  5. Upload to YouTube
-# Run locally with:  python main.py
-
-import subprocess
-import sys
 import os
+import sys
+import subprocess
 
-SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "scripts")
-
-# UPDATED STEPS: 'generate_images.py' ko bypass karke direct Kaggle ko handle kiya hai
-STEPS = [
-    ("Generating viral story structure...", "generate_story.py"),
-    ("Generating audio/voiceover...", "generate_audio.py"),
-    # Kaggle script now automatically generates 10 Images (SDXL-Turbo) + Animates them (SVD)
-    ("Generating Images & Animating scenes on Kaggle GPU...", "kaggle_animate.py"),
-    ("Rendering final video with subtitles...", "render_video_animated.py"),
-    ("Uploading viral content to YouTube...", "upload_youtube.py"),
-]
-
-
-def run_step(label: str, script: str):
-    print(f"\n{'=' * 60}\n{label}\n{'=' * 60}")
-    script_path = os.path.join(SCRIPTS_DIR, script)
+def run_step(script_name, description):
+    print(f"\n{'='*70}")
+    print(f"🚀 {description}")
+    print(f"{'='*70}", flush=True)
+    
+    script_path = os.path.join("scripts", script_name)
+    if not os.path.exists(script_path):
+        print(f"❌ ERROR: Script {script_path} not found! Check your folder structure.", file=sys.stderr)
+        sys.exit(1)
+        
+    # Run the script and halt everything if it fails
     result = subprocess.run([sys.executable, script_path])
     if result.returncode != 0:
-        print(f"\nFATAL: {script} failed with exit code {result.returncode}. Stopping pipeline.")
-        sys.exit(result.returncode)
-
+        print(f"❌ FATAL ERROR: {script_name} crashed with exit code {result.returncode}. Stopping pipeline.", file=sys.stderr)
+        sys.exit(1)
 
 def main():
-    skip_upload = os.environ.get("SKIP_UPLOAD", "false").lower() == "true"
+    # 1. OUT OF THE BOX FIX: Create all required directories BEFORE doing anything!
+    # This permanently kills the "No images directory found" and "Missing asset" errors.
+    print("🛠️ Setting up workspace directories...", flush=True)
+    os.makedirs("output", exist_ok=True)
+    os.makedirs("output/audio", exist_ok=True)
+    os.makedirs("output/images", exist_ok=True) 
+    os.makedirs("kaggle_run", exist_ok=True)
 
-    for label, script in STEPS:
-        if script == "upload_youtube.py" and skip_upload:
-            print("\nSKIP_UPLOAD=true -> skipping YouTube upload step.")
-            continue
-        run_step(label, script)
-
-    print("\nPipeline completed successfully! Video is live! 🚀")
-
+    # 2. Run the pipeline STRICTLY calling the Kaggle script (Bypassing old local scripts)
+    run_step("generate_story.py", "Step 1: Generating Viral Script (Mistral AI)...")
+    run_step("generate_audio.py", "Step 2: Generating Voiceovers (Edge TTS)...")
+    
+    # Ye step ensure karega ki tumhara naya Kaggle code chale, purana nahi!
+    run_step("kaggle_animate.py", "Step 3: Generating & Animating on Kaggle GPU...")
+    
+    run_step("render_video_animated.py", "Step 4: Rendering Final Video with Subtitles...")
+    
+    print("\n🎉 BOOM! Pipeline completed successfully! Final video is ready in output/final_video.mp4", flush=True)
 
 if __name__ == "__main__":
     main()
