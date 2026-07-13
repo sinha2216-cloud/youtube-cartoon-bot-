@@ -18,19 +18,12 @@ def main():
     os.makedirs(KAGGLE_WORKSPACE, exist_ok=True)
     
     # 1. Write main.py
+    # NOTE: Do NOT reinstall torch/torchvision. Let Kaggle use its own pre-installed versions.
     with open(os.path.join(KAGGLE_WORKSPACE, "main.py"), "w", encoding="utf-8") as f:
         f.write(f"""
 import subprocess, os, json, torch
 
-# NUCLEAR OPTION: Force reinstall CUDA-enabled PyTorch if not present
-print("Checking CUDA support...")
-if not torch.cuda.is_available():
-    print("CUDA not found! Reinstalling PyTorch with CUDA support...")
-    subprocess.run(['pip', 'install', '--force-reinstall', 'torch', 'torchvision', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cu121'], check=True)
-    import torch
-    torch.cuda.empty_cache()
-
-# Install other dependencies
+print("Installing required libraries...")
 subprocess.run(['pip', 'install', '-q', 'diffusers==0.29.2', 'transformers==4.43.0', 'accelerate', 'peft'], check=True)
 
 from diffusers import AutoPipelineForText2Image, StableVideoDiffusionPipeline
@@ -57,7 +50,7 @@ for i in range(len(prompts)):
 print("COMPLETED_SUCCESSFULLY")
 """)
 
-    # 2. Metadata (Make sure it requests GPU)
+    # 2. Metadata
     with open(os.path.join(KAGGLE_WORKSPACE, "kernel-metadata.json"), "w") as f:
         json.dump({
             "id": kernel_id, 
