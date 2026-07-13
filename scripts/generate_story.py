@@ -15,17 +15,29 @@ OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "..", "output", "story.jso
 # Fast pacing ke liye default ko 10 scenes kar diya hai
 NUM_SCENES = int(os.environ.get("NUM_SCENES", "10"))
 
-# Gemini 1.0/1.5/2.0 models have all been retired by Google (they now 404).
-# You can override this via env var if Google renames things again in future.
-# Order = preference. First one that actually supports generateContent wins.
-MODEL_CANDIDATES = [
-    os.environ.get("GEMINI_MODEL", "").strip(),  # explicit override wins if set
-    "gemini-2.5-flash",
+# Google keeps retiring / restricting Gemini models per-account (1.0, 1.5, 2.0 are
+# dead; 2.5-flash is "no longer available to new users" on some keys). A model
+# showing up in ListModels does NOT guarantee generateContent will actually work
+# for this specific key. So: don't hardcode one model — build a ranked list of
+# candidates and fall through to the next one the instant any model 404s.
+
+# If you want to force a specific model, set GEMINI_MODEL env var — it will be
+# tried first, but we still fall through to others if it fails.
+MANUAL_OVERRIDE = os.environ.get("GEMINI_MODEL", "").strip()
+
+# Static fallback order used only if ListModels itself fails (e.g. network issue).
+STATIC_FALLBACK_ORDER = [
     "gemini-flash-latest",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-pro-latest",
     "gemini-2.5-pro",
-    "gemini-3.1-flash-lite",
+    "gemini-1.5-flash",
 ]
-MODEL_CANDIDATES = [m for m in MODEL_CANDIDATES if m]
+
+# Known-dead or known-restricted model name fragments — deprioritize these even
+# if ListModels still lists them, since they tend to 404 on many keys.
+DEPRIORITIZE_HINTS = ["1.0", "vision", "tuning", "embedding", "aqa"]
 
 PROMPT_TEMPLATE = """You are an expert viral YouTube Shorts creator specializing in 2D animated kids' moral stories.
 
@@ -75,40 +87,61 @@ def extract_json(text: str) -> dict:
     return json.loads(text)
 
 
-def _pick_working_model() -> str:
-    """
-    Google keeps retiring Gemini model aliases (1.0, 1.5, and now 2.0 are all dead).
-    Instead of hardcoding a name that will 404 again in a few months, ask the API
-    what's actually available right now and pick the best match.
-    """
+def _rank_key(name: str):
+    """Lower rank = tried first. Prefer 'latest' aliases, then flash, then pro,
+    deprioritize anything matching DEPRIORITIZE_HINTS."""
+    lname = name.lower()
+    if any(h in lname for h in DEPRIORITIZE_HINTS):
+        return (9, name)
+    if "latest" in lname and "flash" in lname:
+        return (0, name)
+    if "flash" in lname:
+        return (1, name)
+    if "latest" in lname:
+        return (2, name)
+    if "pro" in lname:
+        return (3, name)
+    return (5, name)
+
+
+def get_model_candidates() -> list:
+    """Return an ordered list of model names to try, manual override first."""
+    candidates = []
+
     try:
         available = []
         for m in genai.list_models():
-            if "generateContent" in getattr(m, "supported_generation_methods", []):
+            methods = getattr(m, "supported_generation_methods", [])
+            if "generateContent" in methods:
                 available.append(m.name.replace("models/", ""))
 
-        if available:
-            # 1) exact match against our preference list, in order
-            for candidate in MODEL_CANDIDATES:
-                if candidate in available:
-                    print(f"Using model: {candidate}", file=sys.stderr)
-                    return candidate
-
-            # 2) fuzzy match: prefer a "flash" model (cheap/fast) over "pro"
-            flash_models = sorted([m for m in available if "flash" in m.lower()])
-            if flash_models:
-                print(f"Using auto-detected model: {flash_models[-1]}", file=sys.stderr)
-                return flash_models[-1]
-
-            # 3) last resort: any model that supports generateContent
-            print(f"Using auto-detected model: {available[0]}", file=sys.stderr)
-            return available[0]
-
+        available = sorted(set(available), key=_rank_key)
+        candidates.extend(available)
     except Exception as e:
-        print(f"Warning: could not list models ({e}); falling back to hardcoded list.", file=sys.stderr)
+        print(f"Warning: ListModels failed ({e}); using static fallback list.", file=sys.stderr)
+        candidates.extend(STATIC_FALLBACK_ORDER)
 
-    # If ListModels itself failed (e.g. network hiccup), just try our first guess.
-    return MODEL_CANDIDATES[0]
+    # Make sure the static fallbacks are present too, in case ListModels
+    # returned an incomplete/odd list for this key.
+    for name in STATIC_FALLBACK_ORDER:
+        if name not in candidates:
+            candidates.append(name)
+
+    # Manual override always goes first.
+    if MANUAL_OVERRIDE:
+        candidates = [MANUAL_OVERRIDE] + [c for c in candidates if c != MANUAL_OVERRIDE]
+
+    return candidates
+
+
+def is_model_unavailable_error(err: Exception) -> bool:
+    msg = str(err).lower()
+    return (
+        "404" in msg
+        or "not found" in msg
+        or "no longer available" in msg
+        or "not supported" in msg
+    )
 
 
 def main():
@@ -118,57 +151,64 @@ def main():
 
     genai.configure(api_key=GEMINI_API_KEY)
 
-    model_name = _pick_working_model()
-    model = genai.GenerativeModel(model_name)
-
     prompt = PROMPT_TEMPLATE.format(num_scenes=NUM_SCENES)
+    candidates = get_model_candidates()
+    print(f"Model candidates to try, in order: {candidates}", file=sys.stderr)
 
     last_err = None
-    for attempt in range(3):
+    tried_models = []
+
+    for model_name in candidates:
+        tried_models.append(model_name)
+        print(f"\n--- Trying model: {model_name} ---", file=sys.stderr)
+
         try:
-            # Force target JSON format via model configuration
-            response = model.generate_content(
-                prompt,
-                generation_config={"response_mime_type": "application/json"}
-            )
-            data = extract_json(response.text)
-            
-            if "scenes" not in data or not data["scenes"]:
-                raise ValueError("No scenes returned by model.")
-            
-            # Direct validation check to ensure it matched the requested scene length
-            if len(data["scenes"]) != NUM_SCENES:
-                print(f"Warning: Model generated {len(data['scenes'])} scenes instead of {NUM_SCENES}.", file=sys.stderr)
-
-            os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-            with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-                
-            print(f"✅ Viral Story generated successfully -> {OUTPUT_PATH}")
-            print(f"Title: {data.get('title')}")
-            print(f"Scenes Configured: {len(data['scenes'])}")
-            return
-            
+            model = genai.GenerativeModel(model_name)
         except Exception as e:
+            print(f"Could not initialize model {model_name}: {e}", file=sys.stderr)
             last_err = e
-            print(f"Attempt {attempt + 1} failed: {e}", file=sys.stderr)
-            # If it's a 404 model error, re-pick a model before retrying instead of
-            # hammering the same dead endpoint three times.
-            if "404" in str(e) and "is not found" in str(e):
-                try:
-                    new_model_name = _pick_working_model()
-                    if new_model_name != model_name:
-                        print(f"Switching model from {model_name} to {new_model_name} and retrying immediately.", file=sys.stderr)
-                        model_name = new_model_name
-                        model = genai.GenerativeModel(model_name)
-                        continue
-                except Exception:
-                    pass
-            wait_seconds = 20 * (attempt + 1)
-            print(f"Waiting {wait_seconds}s before retrying...", file=sys.stderr)
-            time.sleep(wait_seconds)
+            continue
 
-    print(f"ERROR: Story generation failed after retries: {last_err}", file=sys.stderr)
+        # Up to 2 quick retries per model (for transient errors), then move on.
+        for attempt in range(2):
+            try:
+                response = model.generate_content(
+                    prompt,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                data = extract_json(response.text)
+
+                if "scenes" not in data or not data["scenes"]:
+                    raise ValueError("No scenes returned by model.")
+
+                if len(data["scenes"]) != NUM_SCENES:
+                    print(f"Warning: Model generated {len(data['scenes'])} scenes instead of {NUM_SCENES}.", file=sys.stderr)
+
+                os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+                with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+
+                print(f"✅ Viral Story generated successfully -> {OUTPUT_PATH}")
+                print(f"Model used: {model_name}")
+                print(f"Title: {data.get('title')}")
+                print(f"Scenes Configured: {len(data['scenes'])}")
+                return
+
+            except Exception as e:
+                last_err = e
+                print(f"Model {model_name}, attempt {attempt + 1} failed: {e}", file=sys.stderr)
+
+                if is_model_unavailable_error(e):
+                    print(f"Model {model_name} seems unavailable for this API key. Moving to next candidate immediately.", file=sys.stderr)
+                    break  # stop retrying this model, go to next candidate
+
+                # Transient/non-availability error (rate limit, network, etc.) - brief wait then retry same model.
+                wait_seconds = 15 * (attempt + 1)
+                print(f"Waiting {wait_seconds}s before retrying same model...", file=sys.stderr)
+                time.sleep(wait_seconds)
+
+    print(f"\nERROR: Story generation failed. Tried models: {tried_models}", file=sys.stderr)
+    print(f"Last error: {last_err}", file=sys.stderr)
     sys.exit(1)
 
 
