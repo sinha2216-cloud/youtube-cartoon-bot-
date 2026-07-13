@@ -1,7 +1,7 @@
 # kaggle_animate.py
 import os, json, sys, time, subprocess
 
-# Paths - Updated to use Absolute Path to avoid reference errors
+# Paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 KAGGLE_WORKSPACE = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "kaggle_run"))
 OUTPUT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "output"))
@@ -10,10 +10,8 @@ STORY_JSON = os.path.join(OUTPUT_DIR, "story.json")
 def main():
     username = os.environ.get("KAGGLE_USERNAME")
     key = os.environ.get("KAGGLE_KEY")
-    if not username or not key:
-        print("ERROR: KAGGLE_USERNAME or KAGGLE_KEY not set!")
-        sys.exit(1)
-
+    kernel_id = f"{username}/kids-cartoon-automation-hd"
+    
     with open(STORY_JSON, "r", encoding="utf-8") as f:
         story_data = json.load(f)
     prompts = [scene["image_prompt"] for scene in story_data.get("scenes", [])]
@@ -23,9 +21,8 @@ def main():
     # 1. Write main.py
     with open(os.path.join(KAGGLE_WORKSPACE, "main.py"), "w", encoding="utf-8") as f:
         f.write(f"""
-import subprocess, sys, os
+import subprocess, os, json, torch
 subprocess.run(['pip', 'install', '-q', 'diffusers==0.29.2', 'transformers==4.40.2', 'accelerate'])
-import torch, json
 from diffusers import AutoPipelineForText2Image, StableVideoDiffusionPipeline
 from diffusers.utils import export_to_video
 from PIL import Image
@@ -39,6 +36,7 @@ for i, p in enumerate(prompts):
     img = pipe(p, num_inference_steps=2, guidance_scale=0.0).images[0].resize((1024, 576))
     img.save(f"output_scenes/image_{{i}}.png")
 del pipe
+torch.cuda.empty_cache()
 
 # Video Gen
 svd = StableVideoDiffusionPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16).to("cuda")
@@ -46,33 +44,37 @@ for i in range(len(prompts)):
     img = Image.open(f"output_scenes/image_{{i}}.png")
     frames = svd(img, decode_chunk_size=2, generator=torch.manual_seed(42)).frames[0]
     export_to_video(frames, f"output_scenes/final_scene_{{i}}.mp4", fps=7)
+print("COMPLETED_SUCCESSFULLY")
 """)
 
-    # 2. Write kernel-metadata.json
-    metadata = {
-        "id": f"{username}/kids-cartoon-automation-hd",
-        "title": "Kids Cartoon Automation HD",
-        "code_file": "main.py",
-        "language": "python",
-        "kernel_type": "script",
-        "is_gpu": True,
-        "enable_internet": True
-    }
+    # 2. Metadata
     with open(os.path.join(KAGGLE_WORKSPACE, "kernel-metadata.json"), "w") as f:
-        json.dump(metadata, f)
+        json.dump({"id": kernel_id, "title": "Kids Cartoon Automation HD", "code_file": "main.py", "language": "python", "kernel_type": "script", "is_gpu": True, "enable_internet": True}, f)
 
-    # 3. VERIFICATION CHECK (Crucial fix)
-    print(f"DEBUG: Checking {KAGGLE_WORKSPACE} for files...")
-    files = os.listdir(KAGGLE_WORKSPACE)
-    print(f"Files found: {files}")
-    if "kernel-metadata.json" not in files:
-        print("CRITICAL ERROR: kernel-metadata.json NOT FOUND in workspace!")
-        sys.exit(1)
-
-    # 4. Push
+    # 3. Push and WAIT
     print("Pushing to Kaggle...")
     subprocess.run(["kaggle", "kernels", "push", "-p", KAGGLE_WORKSPACE], check=True)
-    print("Push successful!")
+
+    print("Waiting for Kaggle to finish processing (this may take a few minutes)...")
+    while True:
+        time.sleep(60) # Check every minute
+        result = subprocess.run(["kaggle", "kernels", "status", kernel_id], capture_output=True, text=True)
+        status = result.stdout.lower()
+        print(f"Current Status: {status.strip()}")
+        
+        if "complete" in status:
+            print("Kaggle Kernel Finished!")
+            break
+        elif "error" in status or "failed" in status:
+            print("Kaggle Kernel Failed!")
+            sys.exit(1)
+        else:
+            print("Still running...")
+
+    # 4. Download
+    print("Downloading assets...")
+    subprocess.run(["kaggle", "kernels", "output", kernel_id, "-p", OUTPUT_DIR], check=True)
+    print("Assets downloaded successfully.")
 
 if __name__ == "__main__":
     main()
