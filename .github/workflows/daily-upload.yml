@@ -8,7 +8,7 @@ on:
 jobs:
   generate-and-upload:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # 🔄 FIX: Timeout 90 se 120 kar diya taaki heavy Kaggle rendering cancel na ho
+    timeout-minutes: 150  # 🔄 FIX: Timeout 120 se 150 kar diya taaki heavy Kaggle rendering cancel na ho
 
     steps:
       - name: Checkout repository
