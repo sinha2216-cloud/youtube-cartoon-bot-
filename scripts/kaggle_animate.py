@@ -21,16 +21,27 @@ def main():
 
     os.makedirs(KAGGLE_WORKSPACE, exist_ok=True)
 
-    # 1. Write main.py -- NO torch/torchvision reinstall. Trust Kaggle's GPU image.
+    # 1. Write main.py -- installs a torch build that supports OLDER P100 GPUs (Pascal/sm_60),
+    # since Kaggle's own pre-installed torch has dropped support for it.
     with open(os.path.join(KAGGLE_WORKSPACE, "main.py"), "w", encoding="utf-8") as f:
         f.write(f"""
-import subprocess, os, json, torch
+import subprocess, os, json, sys
 
+print("Installing PyTorch build compatible with older P100 GPUs (Pascal/sm_60)...")
+subprocess.run([
+    sys.executable, "-m", "pip", "install", "-q",
+    "torch==2.5.0", "torchvision==0.20.0",
+    "--index-url", "https://download.pytorch.org/whl/cu121"
+], check=True)
+
+subprocess.run([
+    sys.executable, "-m", "pip", "install", "-q",
+    "diffusers==0.29.2", "transformers==4.43.0", "accelerate", "peft"
+], check=True)
+
+import torch
 print(f"CUDA Available: {{torch.cuda.is_available()}}")
 print(f"Torch Version: {{torch.__version__}}")
-
-print("Installing dependencies...")
-subprocess.run(['pip', 'install', '-q', 'diffusers==0.29.2', 'transformers==4.43.0', 'accelerate', 'peft'], check=True)
 
 from diffusers import AutoPipelineForText2Image, StableVideoDiffusionPipeline
 from diffusers.utils import export_to_video
@@ -54,7 +65,7 @@ for i in range(len(prompts)):
 print("COMPLETED_SUCCESSFULLY")
 """)
 
-    # 2. Metadata -- THE ACTUAL FIX: "enable_gpu", not "is_gpu"
+    # 2. Metadata -- enable_gpu (not is_gpu) is the correct field name
     with open(os.path.join(KAGGLE_WORKSPACE, "kernel-metadata.json"), "w") as f:
         json.dump({
             "id": kernel_id,
