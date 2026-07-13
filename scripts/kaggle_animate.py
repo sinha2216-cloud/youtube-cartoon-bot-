@@ -11,7 +11,7 @@ KAGGLE_WORKSPACE = os.path.join(os.path.dirname(__file__), "..", "kaggle_run")
 OUTPUT_IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "output", "images")
 
 def main():
-    print("🚀 INIT: Kaggle GPU Orchestrator (Version: P100 Stable)", flush=True)
+    print("🚀 INIT: Kaggle GPU Orchestrator (Version: P100 Stable - Optimized)", flush=True)
 
     # 1. Setup Credentials
     username = os.environ.get("KAGGLE_USERNAME")
@@ -51,12 +51,11 @@ import sys
 import subprocess
 import os
 
-# --- 🛠️ STABLE INSTALL FOR P100 GPU ---
-print("🛠️ Synchronizing Environment...", flush=True)
-subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "torch", "torchvision", "torchaudio", "diffusers", "transformers"])
-# Force stable versions for P100 compatibility
-subprocess.run([sys.executable, "-m", "pip", "install", "torch==2.4.1", "torchvision==0.19.1", "torchaudio==2.4.1", "--index-url", "https://download.pytorch.org/whl/cu121"])
-subprocess.run([sys.executable, "-m", "pip", "install", "diffusers", "transformers", "accelerate", "peft", "pillow"])
+# --- 🛠️ OPTIMIZED INSTALL FOR KAGGLE GPU ---
+print("🛠️ Checking & Synchronizing Environment...", flush=True)
+# Poora torch un-install karne ke bajay targeted update karenge taaki time bache
+subprocess.run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "torch==2.4.1", "torchvision==0.19.1", "torchaudio==2.4.1", "--index-url", "https://download.pytorch.org/whl/cu121"])
+subprocess.run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "diffusers", "transformers", "accelerate", "peft", "pillow"])
 print("✅ Environment Synced!", flush=True)
 
 import torch
@@ -139,19 +138,3 @@ print("✅ Kaggle Generation Complete!", flush=True)
     
     while True:
         status_res = subprocess.run(["kaggle", "kernels", "status", kernel_id], capture_output=True, text=True)
-        status = status_res.stdout.lower()
-        if "complete" in status:
-            print("🎉 Kaggle Run Completed!", flush=True)
-            break
-        elif "error" in status or "failed" in status:
-            print(f"❌ FATAL: Kaggle GPU error!", file=sys.stderr)
-            sys.exit(1)
-        time.sleep(30)
-
-    # 7. Pull Assets
-    print(f"📥 Downloading assets...", flush=True)
-    subprocess.run(["kaggle", "kernels", "output", kernel_id, "-p", OUTPUT_IMAGES_DIR], check=True)
-    print("✅ Assets ready for Video Renderer.", flush=True)
-
-if __name__ == "__main__":
-    main()
