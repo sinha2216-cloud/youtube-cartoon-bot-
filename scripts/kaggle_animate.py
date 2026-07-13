@@ -45,15 +45,22 @@ def main():
     os.makedirs(KAGGLE_WORKSPACE, exist_ok=True)
     
     kaggle_script_content = f"""
-import torch
-import gc
 import os
 import subprocess
+
+print("Installing fully compatible package bundle to prevent dependency clash...")
+# FIXED: Pinned transformers to 4.40.2 alongside diffusers 0.29.2 to avoid FLAX_WEIGHTS_NAME ImportError
+subprocess.run([
+    "pip", "install", "-q", "--upgrade", 
+    "diffusers==0.29.2", 
+    "transformers==4.40.2", 
+    "accelerate==0.30.1", 
+    "omega-conf"
+], check=True)
+
+import torch
+import gc
 from PIL import Image
-
-# CRITICAL FIX: Pin to diffusers==0.29.2 to prevent torch.Tensor validation crash
-subprocess.run(["pip", "install", "-q", "diffusers==0.29.2", "transformers", "accelerate"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
 from diffusers import AutoPipelineForText2Image, StableVideoDiffusionPipeline
 from diffusers.utils import export_to_video
 
@@ -92,13 +99,12 @@ video_pipe = StableVideoDiffusionPipeline.from_pretrained(
     torch_dtype=torch.float16, 
     variant="fp16"
 )
-video_pipe.to("cuda")
-video_pipe.enable_model_cpu_offload() 
+video_pipe.to("cuda") 
 
 for i, img_path in enumerate(generated_images):
     print(f"Animating Scene {{i+1}}...")
     img = Image.open(img_path)
-    frames = video_pipe(img, decode_chunk_size=4, generator=torch.manual_seed(42)).frames[0]
+    frames = video_pipe(img, decode_chunk_size=2, generator=torch.manual_seed(42)).frames[0]
     
     raw_vid = f"output_scenes/raw_scene_{{i}}.mp4"
     export_to_video(frames, raw_vid, fps=7)
