@@ -13,7 +13,7 @@ import numpy as np
 
 # Compatibility shim: newer Pillow versions removed Image.ANTIALIAS,
 # but moviepy 1.0.3 still references it internally.
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 if not hasattr(Image, "ANTIALIAS"):
     Image.ANTIALIAS = Image.LANCZOS
 
@@ -41,11 +41,21 @@ else:
 
 FPS = 30
 MUSIC_VOLUME = 0.08  # keep music quiet under narration
+SATURATION_BOOST = 1.5  # bright, punchy colors read well in the Shorts feed
+CONTRAST_BOOST = 1.15
+
+
+def enhance_image(image_path: str) -> np.ndarray:
+    """Boost saturation/contrast once per scene image (cheap: done once, not per frame)."""
+    img = Image.open(image_path).convert("RGB")
+    img = ImageEnhance.Color(img).enhance(SATURATION_BOOST)
+    img = ImageEnhance.Contrast(img).enhance(CONTRAST_BOOST)
+    return np.array(img)
 
 
 def ken_burns_clip(image_path: str, duration: float, zoom_in: bool):
     """Apply a slow zoom (Ken Burns effect) to a still image, cropped/resized to fill W x H."""
-    clip = ImageClip(image_path)
+    clip = ImageClip(enhance_image(image_path))
 
     # Resize so the image covers the full frame (cover, not contain)
     scale = max(W / clip.w, H / clip.h) * 1.15  # extra 15% for zoom headroom
