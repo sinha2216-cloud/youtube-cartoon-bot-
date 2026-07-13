@@ -29,7 +29,8 @@ jobs:
 
       - name: Run full pipeline (generate + upload)
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # 🔄 VIRAL FIX: Gemini hata kar Mistral API Key bind kar di hai
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -38,7 +39,6 @@ jobs:
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
           YOUTUBE_PRIVACY_STATUS: "public"
           VIDEO_ORIENTATION: "vertical"
-          # 🚀 VIRAL UPGRADE: Scenes 5 se badha kar 10 kar diye hain (Fast Visual Pacing)
           NUM_SCENES: "10"
         run: python main.py
 
