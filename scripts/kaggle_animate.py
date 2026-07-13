@@ -73,7 +73,7 @@ for i, prompt in enumerate(prompts):
     print(f"Generating Image {{i}}...", flush=True)
     img = image_pipe(prompt=prompt, num_inference_steps=2, guidance_scale=0.0).images[0]
     img = img.resize((1024, 576)) 
-    img_path = f"scene_{{i}}.png"  # FIXED: Saving directly as scene_X.png
+    img_path = f"scene_{{i}}.png"
     img.save(img_path)
     generated_images.append(img_path)
 
@@ -93,7 +93,7 @@ for i, img_path in enumerate(generated_images):
     frames = video_pipe(img, decode_chunk_size=4, generator=torch.manual_seed(42)).frames[0]
     
     raw_vid = f"raw_scene_{{i}}.mp4"
-    final_vid = f"scene_{{i}}.mp4" # FIXED: Saving directly as scene_X.mp4
+    final_vid = f"scene_{{i}}.mp4"
     export_to_video(frames, raw_vid, fps=7)
     
     # Saturation Boost
@@ -115,7 +115,7 @@ print("✅ Kaggle Generation Complete!", flush=True)
         "code_file": "main.py",
         "language": "python",
         "kernel_type": "script",
-        "is_gpu": True,
+        "enable_gpu": True,      # 👈 FIXED: Changed from is_gpu to enable_gpu
         "enable_internet": True,
         "dataset_slugs": [],
         "container_slug": None,
