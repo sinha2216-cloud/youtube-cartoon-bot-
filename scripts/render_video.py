@@ -1,5 +1,5 @@
 """
-render_video_animated.py
+render_video.py
 Combines Kaggle AI-animated MP4 clips + voiceover audio into a final MP4,
 loops the animation to match audio length, adds background music safely,
 and burns-in PIL subtitles.
@@ -27,7 +27,7 @@ from moviepy.audio.fx.all import audio_loop
 
 BASE_DIR = os.path.join(os.path.dirname(__file__), "..")
 STORY_PATH = os.path.join(BASE_DIR, "output", "story.json")
-IMAGES_DIR = os.path.join(BASE_DIR, "output", "images")  # Contains Kaggle mp4s too
+IMAGES_DIR = os.path.join(BASE_DIR, "output", "images")  # Contains Kaggle mp4s
 AUDIO_DIR = os.path.join(BASE_DIR, "output", "audio")
 MUSIC_PATH = os.path.join(BASE_DIR, "assets", "background_music.mp3")
 OUTPUT_PATH = os.path.join(BASE_DIR, "output", "final_video.mp4")
@@ -87,10 +87,7 @@ def make_subtitle_clip(text: str, duration: float):
     except Exception:
         font = ImageFont.load_default()
 
-    # Create dummy to measure text wrap
-    from PIL import ImageClip as PILImageClip
     import numpy as np
-    
     dummy = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
     lines = _wrap_text(dummy, text, font, max_width)
 
@@ -122,7 +119,7 @@ def main():
     scene_clips = []
 
     for i, scene in enumerate(story["scenes"]):
-        # 🔄 FIX: Targeted the Kaggle generated MP4 instead of static PNG
+        # TARGET THE AI VIDEO (.mp4) FROM KAGGLE
         video_clip_path = os.path.join(IMAGES_DIR, f"scene_{i}.mp4")
         audio_path = os.path.join(AUDIO_DIR, f"scene_{i}.mp3")
 
@@ -131,9 +128,9 @@ def main():
             sys.exit(1)
 
         narration_audio = AudioFileClip(audio_path)
-        duration = narration_audio.duration + 0.3  # tight clean buffer
+        duration = narration_audio.duration + 0.3  # clean padding
 
-        # Process the real AI video animation clip
+        # Process real video animation clip instead of flat image
         visual = process_animated_clip(video_clip_path, duration)
         subtitle = make_subtitle_clip(scene["narration"], duration)
 
@@ -144,7 +141,7 @@ def main():
     print("🎬 Stitching all AI animated scenes together...", flush=True)
     final_video = concatenate_videoclips(scene_clips, method="compose")
 
-    # 🔄 FIX: Safe Background Music Audio Loop Mixing
+    # FIX: Audio-safe loop mixing 
     if os.path.exists(MUSIC_PATH):
         try:
             print("🎵 Mixing background music loop...", flush=True)
@@ -157,7 +154,7 @@ def main():
 
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     
-    print(f"⚡ Rendering Final MP4 Video ({W}x{H}) with 4 Threads...", flush=True)
+    print(f"⚡ Rendering Final MP4 Video ({W}x{H})...", flush=True)
     final_video.write_videofile(
         OUTPUT_PATH,
         fps=FPS,
@@ -165,7 +162,7 @@ def main():
         audio_codec="aac",
         threads=4,
         preset="medium",
-        logger=None # Suppress massive messy logs in GitHub actions
+        logger=None # Keeps Github Action logs clean
     )
 
     print(f"🎉 SUCCESS: Video rendered perfectly -> {OUTPUT_PATH}")
