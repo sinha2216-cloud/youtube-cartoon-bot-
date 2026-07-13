@@ -1,11 +1,7 @@
-"""
-main.py
-Orchestrates the full pipeline in order:
-1. Generate story  2. Generate audio  3. Generate images  4. Render video  5. Upload to YouTube
-
-Run locally with:  python main.py
-Runs automatically via GitHub Actions on schedule.
-"""
+# main.py
+# Orchestrates the full viral pipeline in order:
+# 1. Generate story (Gemini JSON)  2. Generate audio  3. Generate Images + Animation (Kaggle GPU)  4. Render video  5. Upload to YouTube
+# Run locally with:  python main.py
 
 import subprocess
 import sys
@@ -13,13 +9,14 @@ import os
 
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "scripts")
 
+# UPDATED STEPS: 'generate_images.py' ko bypass karke direct Kaggle ko handle kiya hai
 STEPS = [
-    ("Generating story...", "generate_story.py"),
-    ("Generating audio...", "generate_audio.py"),
-    ("Generating images...", "generate_images.py"),
-    ("Animating scenes on Kaggle GPU (optional, safe no-op without secrets)...", "kaggle_animate.py"),
-    ("Rendering video...", "render_video_animated.py"),
-    ("Uploading to YouTube...", "upload_youtube.py"),
+    ("Generating viral story structure...", "generate_story.py"),
+    ("Generating audio/voiceover...", "generate_audio.py"),
+    # Kaggle script now automatically generates 10 Images (SDXL-Turbo) + Animates them (SVD)
+    ("Generating Images & Animating scenes on Kaggle GPU...", "kaggle_animate.py"),
+    ("Rendering final video with subtitles...", "render_video_animated.py"),
+    ("Uploading viral content to YouTube...", "upload_youtube.py"),
 ]
 
 
@@ -41,7 +38,7 @@ def main():
             continue
         run_step(label, script)
 
-    print("\nPipeline completed successfully!")
+    print("\nPipeline completed successfully! Video is live! 🚀")
 
 
 if __name__ == "__main__":
