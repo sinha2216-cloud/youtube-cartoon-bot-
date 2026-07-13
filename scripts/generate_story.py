@@ -15,6 +15,18 @@ OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "..", "output", "story.jso
 # Fast pacing ke liye default ko 10 scenes kar diya hai
 NUM_SCENES = int(os.environ.get("NUM_SCENES", "10"))
 
+# Gemini 1.0/1.5/2.0 models have all been retired by Google (they now 404).
+# You can override this via env var if Google renames things again in future.
+# Order = preference. First one that actually supports generateContent wins.
+MODEL_CANDIDATES = [
+    os.environ.get("GEMINI_MODEL", "").strip(),  # explicit override wins if set
+    "gemini-2.5-flash",
+    "gemini-flash-latest",
+    "gemini-2.5-pro",
+    "gemini-3.1-flash-lite",
+]
+MODEL_CANDIDATES = [m for m in MODEL_CANDIDATES if m]
+
 PROMPT_TEMPLATE = """You are an expert viral YouTube Shorts creator specializing in 2D animated kids' moral stories.
 
 Write ONE highly engaging, original short animal moral story for children.
@@ -63,15 +75,51 @@ def extract_json(text: str) -> dict:
     return json.loads(text)
 
 
+def _pick_working_model() -> str:
+    """
+    Google keeps retiring Gemini model aliases (1.0, 1.5, and now 2.0 are all dead).
+    Instead of hardcoding a name that will 404 again in a few months, ask the API
+    what's actually available right now and pick the best match.
+    """
+    try:
+        available = []
+        for m in genai.list_models():
+            if "generateContent" in getattr(m, "supported_generation_methods", []):
+                available.append(m.name.replace("models/", ""))
+
+        if available:
+            # 1) exact match against our preference list, in order
+            for candidate in MODEL_CANDIDATES:
+                if candidate in available:
+                    print(f"Using model: {candidate}", file=sys.stderr)
+                    return candidate
+
+            # 2) fuzzy match: prefer a "flash" model (cheap/fast) over "pro"
+            flash_models = sorted([m for m in available if "flash" in m.lower()])
+            if flash_models:
+                print(f"Using auto-detected model: {flash_models[-1]}", file=sys.stderr)
+                return flash_models[-1]
+
+            # 3) last resort: any model that supports generateContent
+            print(f"Using auto-detected model: {available[0]}", file=sys.stderr)
+            return available[0]
+
+    except Exception as e:
+        print(f"Warning: could not list models ({e}); falling back to hardcoded list.", file=sys.stderr)
+
+    # If ListModels itself failed (e.g. network hiccup), just try our first guess.
+    return MODEL_CANDIDATES[0]
+
+
 def main():
     if not GEMINI_API_KEY:
         print("ERROR: GEMINI_API_KEY environment variable not set.", file=sys.stderr)
         sys.exit(1)
 
     genai.configure(api_key=GEMINI_API_KEY)
-    
-    # Using the standard stable gemini-1.5-flash model for reliable structure matching
-    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    model_name = _pick_working_model()
+    model = genai.GenerativeModel(model_name)
 
     prompt = PROMPT_TEMPLATE.format(num_scenes=NUM_SCENES)
 
@@ -104,6 +152,18 @@ def main():
         except Exception as e:
             last_err = e
             print(f"Attempt {attempt + 1} failed: {e}", file=sys.stderr)
+            # If it's a 404 model error, re-pick a model before retrying instead of
+            # hammering the same dead endpoint three times.
+            if "404" in str(e) and "is not found" in str(e):
+                try:
+                    new_model_name = _pick_working_model()
+                    if new_model_name != model_name:
+                        print(f"Switching model from {model_name} to {new_model_name} and retrying immediately.", file=sys.stderr)
+                        model_name = new_model_name
+                        model = genai.GenerativeModel(model_name)
+                        continue
+                except Exception:
+                    pass
             wait_seconds = 20 * (attempt + 1)
             print(f"Waiting {wait_seconds}s before retrying...", file=sys.stderr)
             time.sleep(wait_seconds)
