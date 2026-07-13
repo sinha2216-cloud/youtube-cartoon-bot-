@@ -22,7 +22,9 @@ def main():
     with open(os.path.join(KAGGLE_WORKSPACE, "main.py"), "w", encoding="utf-8") as f:
         f.write(f"""
 import subprocess, os, json, torch
-subprocess.run(['pip', 'install', '-q', 'diffusers==0.29.2', 'transformers==4.40.2', 'accelerate'])
+# FIXED: Updated transformers to 4.43.0 to support EncoderDecoderCache and satisfy peft
+subprocess.run(['pip', 'install', '-q', 'diffusers==0.29.2', 'transformers==4.43.0', 'accelerate', 'peft'], check=True)
+
 from diffusers import AutoPipelineForText2Image, StableVideoDiffusionPipeline
 from diffusers.utils import export_to_video
 from PIL import Image
@@ -55,9 +57,9 @@ print("COMPLETED_SUCCESSFULLY")
     print("Pushing to Kaggle...")
     subprocess.run(["kaggle", "kernels", "push", "-p", KAGGLE_WORKSPACE], check=True)
 
-    print("Waiting for Kaggle to finish processing (this may take a few minutes)...")
+    print("Waiting for Kaggle to finish processing...")
     while True:
-        time.sleep(60) # Check every minute
+        time.sleep(60) 
         result = subprocess.run(["kaggle", "kernels", "status", kernel_id], capture_output=True, text=True)
         status = result.stdout.lower()
         print(f"Current Status: {status.strip()}")
@@ -66,10 +68,11 @@ print("COMPLETED_SUCCESSFULLY")
             print("Kaggle Kernel Finished!")
             break
         elif "error" in status or "failed" in status:
-            print("Kaggle Kernel Failed!")
+            print("Kaggle Kernel Failed! Fetching logs...")
+            # DUMP LOGS
+            log_res = subprocess.run(["kaggle", "kernels", "output", kernel_id, "-p", OUTPUT_DIR], capture_output=True, text=True)
+            print(log_res.stdout)
             sys.exit(1)
-        else:
-            print("Still running...")
 
     # 4. Download
     print("Downloading assets...")
