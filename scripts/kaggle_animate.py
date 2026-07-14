@@ -21,8 +21,6 @@ def main():
 
     os.makedirs(KAGGLE_WORKSPACE, exist_ok=True)
 
-    # 1. Write main.py -- installs a torch build that supports OLDER P100 GPUs (Pascal/sm_60),
-    # since Kaggle's own pre-installed torch has dropped support for it.
     with open(os.path.join(KAGGLE_WORKSPACE, "main.py"), "w", encoding="utf-8") as f:
         f.write(f"""
 import subprocess, os, json, sys
@@ -50,9 +48,15 @@ from PIL import Image
 prompts = {json.dumps(prompts)}
 os.makedirs("output_scenes", exist_ok=True)
 
+# Cartoon-style suffix so SDXL-Turbo leans away from realistic/photographic output
+STYLE_SUFFIX = ", flat 2D cartoon style, children's book illustration, vector art, clean bold outlines, vibrant colors, no photorealism"
+
+# PORTRAIT size for vertical YouTube Shorts (was landscape before -- caused bad cropping)
+TARGET_SIZE = (576, 1024)
+
 pipe = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", torch_dtype=torch.float16).to("cuda")
 for i, p in enumerate(prompts):
-    img = pipe(p, num_inference_steps=2, guidance_scale=0.0).images[0].resize((1024, 576))
+    img = pipe(p + STYLE_SUFFIX, num_inference_steps=2, guidance_scale=0.0).images[0].resize(TARGET_SIZE)
     img.save(f"output_scenes/image_{{i}}.png")
 del pipe
 torch.cuda.empty_cache()
@@ -60,12 +64,18 @@ torch.cuda.empty_cache()
 svd = StableVideoDiffusionPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16).to("cuda")
 for i in range(len(prompts)):
     img = Image.open(f"output_scenes/image_{{i}}.png")
-    frames = svd(img, decode_chunk_size=2, generator=torch.manual_seed(42)).frames[0]
+    frames = svd(
+        img,
+        decode_chunk_size=2,
+        num_inference_steps=15,        # was ~25 default -> ~40% faster per scene
+        motion_bucket_id=130,          # was unset (defaults to subtle ~1-40) -> visibly more motion
+        noise_aug_strength=0.03,
+        generator=torch.manual_seed(42),
+    ).frames[0]
     export_to_video(frames, f"output_scenes/final_scene_{{i}}.mp4", fps=7)
 print("COMPLETED_SUCCESSFULLY")
 """)
 
-    # 2. Metadata -- enable_gpu (not is_gpu) is the correct field name
     with open(os.path.join(KAGGLE_WORKSPACE, "kernel-metadata.json"), "w") as f:
         json.dump({
             "id": kernel_id,
