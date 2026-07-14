@@ -4,10 +4,10 @@
 
 import os
 import json
+import random
 import re
 import sys
 import time
-# 🔄 FIX: Naye Mistral SDK ke mutabiq import path sahi kiya hai
 from mistralai.client import Mistral
 
 MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")
@@ -15,9 +15,40 @@ OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "..", "output", "story.jso
 
 NUM_SCENES = int(os.environ.get("NUM_SCENES", "10"))
 
+# --- Randomization pools so every run starts from a different creative anchor ---
+# Without this, identical prompts + JSON-mode tend to converge on very similar stories.
+ANIMALS = [
+    "a young fox", "a baby elephant", "a curious owl", "a shy turtle", "a playful otter",
+    "a small panda", "a clumsy penguin", "a brave squirrel", "a tiny hedgehog", "a gentle deer",
+    "a mischievous raccoon", "a sleepy koala", "a bold rabbit", "a wise old tortoise", "a spotted fawn",
+]
+SETTINGS = [
+    "an enchanted forest", "a sunny meadow", "a misty mountain village", "a colorful coral reef",
+    "a magical treehouse village", "a snowy pine forest", "a hidden jungle valley", "a lakeside town",
+    "a starlit desert oasis", "a floating cloud kingdom",
+]
+THEMES = [
+    "sharing with others", "overcoming fear", "telling the truth", "helping a friend in need",
+    "being patient", "accepting differences", "trying again after failing", "being kind to strangers",
+    "listening to family", "working together as a team", "controlling anger", "being grateful",
+]
+
+def build_seed() -> str:
+    animal = random.choice(ANIMALS)
+    setting = random.choice(SETTINGS)
+    theme = random.choice(THEMES)
+    return (
+        f"For THIS story specifically, build it around {animal} in {setting}, "
+        f"and the core moral lesson must be about {theme}. "
+        f"Do not reuse a fox-and-glowing-object premise unless the animal above is a fox -- "
+        f"invent fresh, original plot details every time."
+    )
+
 # UPGRADED VIRAL PROMPT: Focuses on well-researched themes, high retention, and fast pacing.
 PROMPT_TEMPLATE = """You are an expert YouTube Shorts strategist and a master storyteller for children's content. 
 Your goal is to write ONE highly engaging, well-researched, and original animal moral story that guarantees high viewer retention and instant engagement.
+
+{seed}
 
 Research & Psychology Requirements:
 - The theme must revolve around highly searched, parent-approved educational topics (e.g., emotional intelligence, sharing, overcoming fear, or problem-solving) disguised as a fun, fast-paced adventure.
@@ -69,23 +100,24 @@ def main():
         print("ERROR: MISTRAL_API_KEY environment variable not set.", file=sys.stderr)
         sys.exit(1)
 
-    # Initialize Mistral Client
     client = Mistral(api_key=MISTRAL_API_KEY)
-    prompt = PROMPT_TEMPLATE.format(num_scenes=NUM_SCENES)
-    
+    seed = build_seed()
+    prompt = PROMPT_TEMPLATE.format(num_scenes=NUM_SCENES, seed=seed)
+
     model_name = "mistral-large-latest"
     print(f"--- Generating Viral Script using Mistral AI ({model_name}) ---", file=sys.stderr)
+    print(f"--- Random seed for this run: {seed} ---", file=sys.stderr)
 
     last_err = None
     for attempt in range(3):
         try:
-            # Enforce JSON output strictly
             response = client.chat.complete(
                 model=model_name,
                 messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                temperature=1.1,  # higher = more variety between runs (default is usually ~0.3-0.7)
             )
-            
+
             data = extract_json(response.choices[0].message.content)
 
             if "scenes" not in data or not data["scenes"]:
